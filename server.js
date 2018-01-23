@@ -1,15 +1,34 @@
 // require express and other modules
 var express = require("express"),
-  app = express(),
-  bodyParser = require("body-parser"),
-  methodOverride = require("method-override");
+    app = express(),
+    bodyParser = require("body-parser"),
+    methodOverride = require("method-override"),
+    cookieParser = require('cookie-parser'),
+    session = require('express-session'),
+    passport = require('passport'),
+    LocalStrategy = require('passport-local').Strategy;
 // require Post model
 var db = require("./models"),
-  Post = db.Post;
+    Post = db.Post,
+    User = db.User;
+
+app.set("view engine", "ejs");
 
 // configure bodyParser (for receiving form data)
 app.use(bodyParser.urlencoded({ extended: true, }));
-
+// middleware for auth
+app.use(cookieParser());
+app.use(session({
+  secret: 'supersecretkey',
+  resave: false,
+  saveUninitialized: false 
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+//passport config
+passport.use(new LocalStrategy(User.authenticate()));
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 // serve static files from public folder
 app.use(express.static(__dirname + "/public"));
 
@@ -18,6 +37,7 @@ app.set("view engine", "ejs");
 
 app.use(methodOverride("_method"));
 
+//app.all('*', requireAuthentication, loadUser);
 
 // HOMEPAGE ROUTE
 
@@ -26,7 +46,7 @@ app.get("/", function (req, res) {
     if (err) {
       res.status(500).json({ error: err.message, });
     } else {
-      res.render("index", { posts: allPosts, });
+      res.render("index", { posts: allPosts, user: req.user });
     }
   });
 });
@@ -36,12 +56,13 @@ app.get("/posts/:id", function(req, res) {
     if (err) {
       res.status(500).json({ error: err.message, });
     } else {
-      res.render("posts/show", { post: foundPost, });
+      res.render("posts/show", { post: foundPost, user: req.user });
     }
   });
 });
 
 app.post("/posts", function(req, res) {
+  console.log (app.path());
   var newPost = new Post(req.body);
 
   // save new post in db
@@ -93,6 +114,51 @@ app.delete("/posts/:id", function (req, res) {
 });
 
 
+
+
+// AUTH ROUTES
+
+// show signup view
+app.get('/signup', function (req, res) {
+  res.render('signup');
+});
+
+// sign up new user, then log them in
+// hashes and salts password, saves new user to db
+app.post('/signup', function (req, res) {
+  User.register(new User({ username: req.body.username }), req.body.password,
+    function (err, newUser) {
+      passport.authenticate('local')(req, res, function() {
+        res.redirect('/');
+      });
+    });
+});
+
+// show login view
+app.get('/login', function (req, res) {
+  res.render('login');
+});
+
+// log in user
+app.post('/login', passport.authenticate('local'), function (req, res) {
+  console.log (req.user);
+  res.redirect('/');
+});
+//log out user
+app.get('/logout', function (req, res) {
+  console.log ("BEFORE logout", JSON.stringify(req.user));
+  req.logout();
+  console.log("AFTER logout", JSON.stringify(req.user));
+  res.redirect('/');
+});
+
+
+
+// pass in the user object
+app.get('/', function (req, res) {
+  res.render('index', {user: req.user});
+});
+
 // API ROUTES
 
 // get all posts
@@ -102,7 +168,8 @@ app.get("/api/posts", function (req, res) {
     if (err) {
       res.status(500).json({ error: err.message, });
     } else {
-      res.json({ posts: allPosts, });
+      console.log (req.body.posts);
+      res.json({ posts: allPosts, user: req.user });
     }
   });
 });
@@ -110,16 +177,19 @@ app.get("/api/posts", function (req, res) {
 // create new post
 app.post("/api/posts", function (req, res) {
   // create new post with form data (`req.body`)
-  var newPost = new Post(req.body);
-
-  // save new post in db
-  newPost.save(function (err, savedPost) {
-    if (err) {
-      res.status(500).json({ error: err.message, });
+  if (req.user) {
+    var newPost = new Post(req.body);
+      newPost.save(function (err, savedPost) {
+        if (err) {
+          res.status(500).json({ error: err.message, });
+        } else {
+          res.json( savedPost, { user: req.user });
+        }
+      });
     } else {
-      res.json(savedPost);
+      res.redirect('/');
     }
-  });
+  // save new post in db
 });
 
 // get one post
@@ -181,6 +251,7 @@ app.delete("/api/posts/:id", function (req, res) {
     }
   });
 });
+
 
 
 // listen on port 3000
