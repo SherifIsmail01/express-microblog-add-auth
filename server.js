@@ -7,6 +7,7 @@ var express = require("express"),
     session = require('express-session'),
     passport = require('passport'),
     LocalStrategy = require('passport-local').Strategy;
+
 // require Post model
 var db = require("./models"),
     Post = db.Post,
@@ -19,7 +20,7 @@ app.use(bodyParser.urlencoded({ extended: true, }));
 // middleware for auth
 app.use(cookieParser());
 app.use(session({
-  secret: 'supersecretkey',
+  secret: 'anystringoftext',
   resave: false,
   saveUninitialized: false 
 }));
@@ -47,6 +48,8 @@ app.get("/", function (req, res) {
       res.status(500).json({ error: err.message, });
     } else {
       res.render("index", { posts: allPosts, user: req.user });
+      //console.log(req.cookies);
+      console.log(req.session);
     }
   });
 });
@@ -64,7 +67,7 @@ app.get("/posts/:id", function(req, res) {
 app.post("/posts", function(req, res) {
   console.log (app.path());
   var newPost = new Post(req.body);
-
+  newPost.user = req.body._id
   // save new post in db
   newPost.save(function (err) {
     if (err) {
@@ -106,7 +109,7 @@ app.put("/posts/:id", function (req, res) {
 app.delete("/posts/:id", function (req, res) {
   // get post id from url params (`req.params`)
   var postId = req.params.id;
-
+  Post.user = req.body._id
   // find post in db by id and remove
   Post.findOneAndRemove({ _id: postId, }, function () {
     res.redirect("/");
@@ -131,7 +134,8 @@ app.post('/signup', function (req, res) {
       passport.authenticate('local')(req, res, function() {
         res.redirect('/');
       });
-    });
+    }
+  );
 });
 
 // show login view
